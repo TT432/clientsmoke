@@ -1,0 +1,27 @@
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+
+# runtime artifacts
+run
+runs
+logs/
+*.log
+hs_err_pid*.log
+
+# local tooling
+.vscode/
+.eclipse/
+.settings/
+.classpath
+.project
+.factorypath
+__pycache__/
+*.pyc
