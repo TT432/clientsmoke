@@ -1,12 +1,12 @@
 package io.github.tt432.clientsmoke.config;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * Configuration for the Client Smoke Test framework.
  *
- * <p>Uses Forge 1.20.1 {@link ForgeConfigSpec} (equivalent to NeoForge's {@code ModConfigSpec}).
- * Config is registered as {@link net.minecraftforge.fml.config.ModConfig.Type#COMMON} and
+ * <p>Uses NeoForge 1.21.1 {@link ModConfigSpec}.
+ * Config is registered as {@link net.neoforged.fml.config.ModConfig.Type#COMMON} and
  * persisted to {@code config/clientsmoke-common.toml} in the game directory.</p>
  *
  * <p><strong>Master switch:</strong> When {@link #ENABLED} is {@code false} (the default),
@@ -15,7 +15,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
  */
 public final class ClientSmokeConfig {
 
-    private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
+    private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     // ──────────────────────────────────────────────
     // Config entries (per D-13)
@@ -29,7 +29,7 @@ public final class ClientSmokeConfig {
      * <p>When {@code true}: annotation scanning runs at mod construction time,
      * config is parsed, and the state machine activates on the first client tick.</p>
      */
-    public static final ForgeConfigSpec.BooleanValue ENABLED = BUILDER
+    public static final ModConfigSpec.BooleanValue ENABLED = BUILDER
             .comment(
                     "Master switch for the client smoke test framework.",
                     "When false (default): no scanning, no tick handler, no events — completely silent.",
@@ -41,7 +41,7 @@ public final class ClientSmokeConfig {
      * Delay in seconds after world load before the first screenshot is captured.
      * Allows chunks to finish rendering and entities to spawn.
      */
-    public static final ForgeConfigSpec.IntValue SCREENSHOT_DELAY = BUILDER
+    public static final ModConfigSpec.IntValue SCREENSHOT_DELAY = BUILDER
             .comment(
                     "Delay in seconds after world load before first screenshot capture.",
                     "Allows chunks to finish rendering and entities to spawn.",
@@ -53,7 +53,7 @@ public final class ClientSmokeConfig {
      * Number of ticks to wait after player spawn for render stabilization.
      * During this period, the state machine polls but does not proceed to test execution.
      */
-    public static final ForgeConfigSpec.IntValue RELOAD_STABILIZE_TICKS = BUILDER
+    public static final ModConfigSpec.IntValue RELOAD_STABILIZE_TICKS = BUILDER
             .comment(
                     "Number of ticks to wait after player spawn for render stabilization.",
                     "During this period, the state machine polls but does not execute tests.",
@@ -65,7 +65,7 @@ public final class ClientSmokeConfig {
      * Whether to automatically exit the Minecraft client after all tests complete.
      * Uses a two-phase exit: {@code mc.stop()} (graceful) → 3s delay → {@code Runtime.getRuntime().halt(0)} (force).
      */
-    public static final ForgeConfigSpec.BooleanValue EXIT_AFTER_SMOKE = BUILDER
+    public static final ModConfigSpec.BooleanValue EXIT_AFTER_SMOKE = BUILDER
             .comment(
                     "Automatically exit Minecraft after all smoke tests complete.",
                     "Uses two-phase exit: mc.stop() → 3s delay → Runtime.halt(0).",
@@ -77,8 +77,8 @@ public final class ClientSmokeConfig {
     // Built spec
     // ──────────────────────────────────────────────
 
-    /** The built {@link ForgeConfigSpec} — register this in the {@code @Mod} constructor. */
-    public static final ForgeConfigSpec SPEC = BUILDER.build();
+    /** The built {@link ModConfigSpec} — register this in the {@code @Mod} constructor. */
+    public static final ModConfigSpec SPEC = BUILDER.build();
 
     // ──────────────────────────────────────────────
     // System property override bridge (per OVRD-01, OVRD-02)

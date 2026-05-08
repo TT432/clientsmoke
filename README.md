@@ -1,6 +1,6 @@
 # ClientSmoke
 
-ClientSmoke is a standalone Forge client-side smoke test mod for automated visual and runtime checks in a real Minecraft client.
+ClientSmoke is a standalone NeoForge client-side smoke test mod for automated visual and runtime checks in a real Minecraft client.
 
 It discovers classes annotated with `@ClientSmoke`, creates a deterministic client test world, runs the discovered tests after the world is stable, captures screenshots, and writes machine-readable reports.
 
@@ -43,15 +43,14 @@ This keeps ClientSmoke independent from the mod being tested while still letting
 
 ## 2. Create A ModDevGradle Run Configuration
 
-With ModDevGradle, define a dedicated client run in the consuming mod's `legacyForge.runs` block:
+With ModDevGradle, define a dedicated client run in the consuming mod's `neoForge.runs` block:
 
 ```gradle
-legacyForge {
+neoForge {
     runs {
         clientSmoke {
             client()
             gameDirectory = project.file("run/clientsmoke")
-            systemProperty "forge.enabledGameTestNamespaces", "clientsmoke"
             systemProperty "clientsmoke.enabled", "true"
             systemProperty "clientsmoke.autoExit", "true"
         }
@@ -75,7 +74,7 @@ ClientSmoke runs client-only checks inside an actual Minecraft client instead of
 At startup, it:
 
 - Registers its config.
-- Scans all loaded mod files for `@ClientSmoke` using Forge `ModFileScanData` and ASM metadata.
+- Scans all loaded mod files for `@ClientSmoke` using NeoForge `ModFileScanData` and ASM metadata.
 - Discovers tests without loading test classes during scanning.
 
 When enabled, it:

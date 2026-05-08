@@ -1,18 +1,18 @@
 plugins {
     id 'java-library'
     id 'io.freefair.lombok' version '8.6'
-    id 'net.neoforged.moddev.legacyforge' version '2.0.91'
+    id 'net.neoforged.moddev' version '2.0.91'
     id 'maven-publish'
 }
 
-version = "${mod_version}+${minecraft_version}-forge"
+version = "${mod_version}+${minecraft_version}-neoforge"
 group = mod_group_id
 
 base {
     archivesName = 'clientsmoke'
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 sourceSets {
     test {
@@ -26,13 +26,8 @@ repositories {
     mavenLocal()
 }
 
-legacyForge {
-    version = project.minecraft_version + '-' + project.forge_version
-
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
-    }
+neoForge {
+    version = project.neo_version
 
     mods {
         clientsmoke {
@@ -43,13 +38,11 @@ legacyForge {
     runs {
         client {
             client()
-            systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
         }
 
         clientSmoke {
             client()
             gameDirectory = project.file('run/clientsmoke')
-            systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
             systemProperty 'clientsmoke.enabled', 'true'
             systemProperty 'clientsmoke.autoExit', 'true'
         }
@@ -58,7 +51,6 @@ legacyForge {
 
 dependencies {
     compileOnly 'org.jspecify:jspecify:1.0.0'
-    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -67,11 +59,6 @@ dependencies {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-}
-
-mixin {
-    add sourceSets.main, 'clientsmoke.refmap.json'
-    config 'clientsmoke.mixins.json'
 }
 
 jar {
@@ -87,14 +74,14 @@ java {
 tasks.named('processResources', ProcessResources).configure {
     def replaceProperties = [
             minecraft_version_range: minecraft_version_range,
-            forge_version_range    : forge_version_range,
+            neo_version_range      : neo_version_range,
             loader_version_range   : loader_version_range,
             mod_version            : mod_version,
             mod_license            : mod_license,
             mod_authors            : mod_authors,
     ]
     inputs.properties(replaceProperties)
-    filesMatching('META-INF/mods.toml') {
+    filesMatching('META-INF/neoforge.mods.toml') {
         expand(replaceProperties)
     }
 }

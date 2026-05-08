@@ -19,12 +19,12 @@ import net.minecraft.world.level.levelgen.WorldDimensions;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +63,7 @@ import java.util.List;
  * @see ClientSmokeState
  * @see ClientSmokeConfig
  */
-@Mod.EventBusSubscriber(modid = ClientSmokeMod.MOD_ID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = ClientSmokeMod.MOD_ID, value = Dist.CLIENT)
 public final class ClientSmokeStateMachine {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientSmokeStateMachine.class);
@@ -139,11 +139,7 @@ public final class ClientSmokeStateMachine {
     }
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.START) {
-            return;
-        }
-
+    public static void onClientTick(ClientTickEvent.Pre event) {
         // Terminal states: IDLE and ERROR halt processing.
         // EXIT is NOT terminal — its handler must receive ticks for the countdown.
         if (state == ClientSmokeState.IDLE || state == ClientSmokeState.ERROR) {
@@ -337,7 +333,7 @@ public final class ClientSmokeStateMachine {
             if (mc.getLevelSource().levelExists(WORLD_NAME)) {
                 // World already exists — reuse it
                 LOGGER.info("[ClientSmoke] World '{}' already exists — reusing", WORLD_NAME);
-                mc.createWorldOpenFlows().loadLevel(null, WORLD_NAME);
+                mc.createWorldOpenFlows().openWorld(WORLD_NAME, () -> {});
             } else {
                 // Create a fresh creative superflat world
                 LOGGER.info("[ClientSmoke] Creating new world '{}' (creative flat, seed={})",
@@ -365,7 +361,8 @@ public final class ClientSmokeStateMachine {
                         WORLD_NAME,
                         levelSettings,
                         worldOptions,
-                        ClientSmokeStateMachine::createFlatWorldDimensions
+                        ClientSmokeStateMachine::createFlatWorldDimensions,
+                        null
                 );
             }
 

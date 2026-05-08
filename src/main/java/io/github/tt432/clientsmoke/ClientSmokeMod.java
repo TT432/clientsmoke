@@ -3,20 +3,20 @@ package io.github.tt432.clientsmoke;
 import io.github.tt432.clientsmoke.config.ClientSmokeConfig;
 import io.github.tt432.clientsmoke.runtime.ClientSmokeStateMachine;
 import io.github.tt432.clientsmoke.scanner.ClientSmokeScanner;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Forge 1.20.1 composition root for the Client Smoke Test framework.
+ * NeoForge 1.21.1 composition root for the Client Smoke Test framework.
  *
  * <p>This mod is <strong>client-only</strong> — it will not load on dedicated servers.
- * The {@code @Mod} constructor fires during Forge's mod construction phase, after
+ * The {@code @Mod} constructor fires during NeoForge's mod construction phase, after
  * {@code ModFileScanData} scanning is complete but before the main menu appears.</p>
  *
  * <h3>Constructor wiring (Phases 1-4)</h3>
@@ -41,12 +41,10 @@ public class ClientSmokeMod {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientSmokeMod.class);
 
-    public ClientSmokeMod() {
-        var bus = FMLJavaModLoadingContext.get().getModEventBus();
-
+    public ClientSmokeMod(IEventBus bus, ModContainer container) {
         LOGGER.info("[ClientSmoke] Mod constructing — MOD_ID={}", MOD_ID);
 
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, ClientSmokeConfig.SPEC);
+        container.registerConfig(ModConfig.Type.COMMON, ClientSmokeConfig.SPEC);
         bus.addListener(this::onClientSetup);
 
         var discoveredTests = ClientSmokeScanner.scan();
