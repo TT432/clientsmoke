@@ -5,7 +5,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 /**
  * Configuration for the Client Smoke Test framework.
  *
- * <p>Uses NeoForge 1.21.1 {@link ModConfigSpec}.
+ * <p>Uses NeoForge {@link ModConfigSpec}.
  * Config is registered as {@link net.neoforged.fml.config.ModConfig.Type#COMMON} and
  * persisted to {@code config/clientsmoke-common.toml} in the game directory.</p>
  *

@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * NeoForge 1.21.1 composition root for the Client Smoke Test framework.
+ * NeoForge composition root for the Client Smoke Test framework.
  *
  * <p>This mod is <strong>client-only</strong> — it will not load on dedicated servers.
  * The {@code @Mod} constructor fires during NeoForge's mod construction phase, after
@@ -57,7 +57,7 @@ public class ClientSmokeMod {
             return;
         }
         event.enqueueWork(() -> {
-            long window = net.minecraft.client.Minecraft.getInstance().getWindow().getWindow();
+            long window = net.minecraft.client.Minecraft.getInstance().getWindow().handle();
             GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
             LOGGER.info("[ClientSmoke] Mouse cursor released for automated smoke run");
         });

@@ -6,10 +6,10 @@ import io.github.tt432.clientsmoke.scanner.ClientSmokeScanner;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.RegistryAccess;
+import net.minecraft.client.Screenshot;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameType;
@@ -196,12 +196,7 @@ public final class ClientSmokeStateMachine {
      * @param event the render level stage event
      */
     @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        // Only capture on AFTER_LEVEL stage
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) {
-            return;
-        }
-
+    public static void onRenderLevelStage(RenderLevelStageEvent.AfterLevel event) {
         // Only capture when state machine is in SCREENSHOT state
         if (state != ClientSmokeState.SCREENSHOT) {
             return;
@@ -225,11 +220,12 @@ public final class ClientSmokeStateMachine {
 
             ClientSmokeVisualHooks.renderBeforeCapture(mc);
 
-            // Per RESEARCH.md Code Examples: create NativeImage, bind color texture, download, flip
-            nativeimage = new NativeImage(width, height, false);
-            RenderSystem.bindTexture(framebuffer.getColorTextureId());
-            nativeimage.downloadTexture(0, true);   // read GL texture into NativeImage
-            nativeimage.flipY();                     // OpenGL bottom-left → image top-left
+            NativeImage[] captured = new NativeImage[1];
+            Screenshot.takeScreenshot(framebuffer, image -> captured[0] = image);
+            nativeimage = captured[0];
+            if (nativeimage == null) {
+                throw new IllegalStateException("Screenshot capture did not produce an image");
+            }
 
             // ── Step 2: Determine output filename (per D-14, D-15) ──
             // Per D-15: className uses getSimpleName() (no package prefix)
@@ -342,10 +338,8 @@ public final class ClientSmokeStateMachine {
                 LevelSettings levelSettings = new LevelSettings(
                         WORLD_NAME,
                         GameType.CREATIVE,
-                        false,                          // hardcore = false
-                        Difficulty.NORMAL,
+                        new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false),
                         true,                           // allowCommands = true
-                        new net.minecraft.world.level.GameRules(),
                         WorldDataConfiguration.DEFAULT
                 );
 
@@ -383,9 +377,9 @@ public final class ClientSmokeStateMachine {
      * @param registry the registry access from the world creation datapack context
      * @return the flat world dimensions produced by the FLAT preset
      */
-    private static WorldDimensions createFlatWorldDimensions(RegistryAccess registry) {
-        return registry.registryOrThrow(Registries.WORLD_PRESET)
-                .getHolderOrThrow(WorldPresets.FLAT)
+    private static WorldDimensions createFlatWorldDimensions(HolderLookup.Provider registry) {
+        return registry.lookupOrThrow(Registries.WORLD_PRESET)
+                .getOrThrow(WorldPresets.FLAT)
                 .value()
                 .createWorldDimensions();
     }
