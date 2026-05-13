@@ -104,6 +104,18 @@ public enum ClientSmokeState {
     SCREENSHOT,
 
     /**
+     * Second screenshot capture phase — captures the framebuffer WITH the HUD
+     * visible, completing the screenshot pair (world + HUD).
+     *
+     * <p>Reached after {@link #SCREENSHOT} when the world-only capture is complete.
+     * The tick handler sets {@code hideGui=false} and waits for
+     * {@code RenderGuiEvent.Post} to fire, where a second framebuffer capture
+     * includes all GUI overlays. The verifyCapture hook fires here, on the
+     * HUD-inclusive image.</p>
+     */
+    HUD_SCREENSHOT,
+
+    /**
      * Test execution phase. Loads the test class via {@code Class.forName()},
      * instantiates it via its no-arg constructor, times the execution, and
      * records the result (pass/fail with duration and error details).

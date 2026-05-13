@@ -24,6 +24,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import org.slf4j.Logger;
@@ -121,6 +122,9 @@ public final class ClientSmokeStateMachine {
     /** One-frame guard preventing duplicate screenshot capture in a single render pass. Set true after capture, reset in tick handler. */
     private static boolean screenshotTakenThisFrame = false;
 
+    /** Flag set by handleHudScreenshot(); cleared by RenderGuiEvent.Post handler after HUD screenshot capture. */
+    private static boolean hudCapturePending = false;
+
     /** Tick at which EXIT state was entered. {@code -1L} = EXIT not yet entered. D-04: tick-counted countdown. */
     private static long exitStartTick = -1L;
 
@@ -156,6 +160,7 @@ public final class ClientSmokeStateMachine {
                 case STABILIZE -> handleStabilize();
                 case HUD_HIDE -> handleHudHide();
                 case SCREENSHOT -> handleScreenshot();
+                case HUD_SCREENSHOT -> handleHudScreenshot();
                 case TEST_EXEC -> handleTestExec();
                 case REPOSITION -> handleReposition();
                 case REPORT -> handleReport();
@@ -209,86 +214,62 @@ public final class ClientSmokeStateMachine {
         screenshotTakenThisFrame = true;
 
         Minecraft mc = Minecraft.getInstance();
-        NativeImage nativeimage = null;
+        RenderTarget framebuffer = mc.getMainRenderTarget();
 
         try {
-            // ── Step 1: Read framebuffer into NativeImage (per D-06 pattern) ──
-            // Verified from Forge 1.20.1-47.1.3 sources: RenderTarget.width/height are public int fields
-            RenderTarget framebuffer = mc.getMainRenderTarget();
-            int width = framebuffer.width;
-            int height = framebuffer.height;
-
             ClientSmokeVisualHooks.renderBeforeCapture(mc);
-
-            NativeImage[] captured = new NativeImage[1];
-            Screenshot.takeScreenshot(framebuffer, image -> captured[0] = image);
-            nativeimage = captured[0];
-            if (nativeimage == null) {
-                throw new IllegalStateException("Screenshot capture did not produce an image");
-            }
-
-            // ── Step 2: Determine output filename (per D-14, D-15) ──
-            // Per D-15: className uses getSimpleName() (no package prefix)
-            String testClassName;
-            if (discoveredTests.isEmpty()) {
-                testClassName = "NoTests";
-            } else {
-                String fqcn = discoveredTests.get(testIndex).className();
-                testClassName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-            }
-
-            // Per D-14: {SimpleClassName}-{yyyyMMdd-HHmmss}.png
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-            String filename = testClassName + "-" + timestamp + ".png";
-
-            // ── Step 3: Create output directory (per D-13, D-16) ──
-            // Per D-13: ./clientsmoke-reports/screenshots/ relative to game dir
-            // Per D-16: Files.createDirectories() auto-creates tree
-            Path outputDir = FMLPaths.GAMEDIR.get().resolve("clientsmoke-reports").resolve("screenshots");
-            Files.createDirectories(outputDir);
-            Path outputFile = outputDir.resolve(filename);
-
-            // ── Step 4: Write PNG (per D-06: NativeImage.writeToFile) ──
-            nativeimage.writeToFile(outputFile);
-            LOGGER.info("[ClientSmoke] Screenshot saved: {}", outputFile.toAbsolutePath());
-
-            try {
-                ClientSmokeVisualHooks.verifyCapture(nativeimage);
-            } catch (Exception visualFailure) {
-                markCurrentTestFailed(visualFailure, "visual verification failed");
-                LOGGER.warn("[ClientSmoke] ✗ FAIL — visual verification for {} — {}",
-                        testClassName, visualFailure.toString());
-            }
-
-            // ── Step 5: Restore HUD visibility (per D-02, D-10) ──
-            mc.options.hideGui = false;
-
-            // ── Step 6: Advance to next test or exit ──
-            testIndex++;
-            if (testIndex < discoveredTests.size()) {
-                // More tests remain — loop back to test execution
-                transitionTo(ClientSmokeState.TEST_EXEC, "Test " + testIndex + "/" + discoveredTests.size() + " — next test");
-            } else {
-                // All tests complete — generate report before exit
-                transitionTo(ClientSmokeState.REPORT, "All " + discoveredTests.size() + " test(s) complete — generating report");
-            }
-
         } catch (Exception e) {
-            LOGGER.error("[ClientSmoke] Screenshot capture failed: {}", e.getMessage(), e);
-            // Per D-09/D-10: Always attempt to restore HUD on error
-            try {
-                mc.options.hideGui = false;
-            } catch (Exception restoreEx) {
-                LOGGER.warn("[ClientSmoke] Failed to restore hideGui after error: {}", restoreEx.getMessage());
-            }
-            transitionTo(ClientSmokeState.ERROR, "Screenshot capture failed: " + e.getMessage());
-        } finally {
-            ClientSmokeVisualHooks.clear();
-            // Per RESEARCH.md Common Pitfalls #2: NativeImage holds off-heap LWJGL memory — must close
-            if (nativeimage != null) {
-                nativeimage.close();
-            }
+            LOGGER.error("[ClientSmoke] renderBeforeCapture failed: {}", e.getMessage(), e);
+            return;
         }
+
+            // In 26.1.2, Screenshot.takeScreenshot is fully async (GPU readback).
+            // The callback fires on the render thread after GPU work completes.
+            // We MUST NOT block the render thread with future.get() — it causes deadlock.
+            // All post-capture logic lives inside the callback.
+
+            int capturedTestIndex = testIndex;
+            Screenshot.takeScreenshot(framebuffer, nativeimage -> {
+                try {
+                    if (nativeimage == null) {
+                        throw new IllegalStateException("Screenshot capture did not produce an image");
+                    }
+
+                    String testClassName;
+                    if (discoveredTests.isEmpty()) {
+                        testClassName = "NoTests";
+                    } else {
+                        String fqcn = discoveredTests.get(capturedTestIndex).className();
+                        testClassName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+                    }
+
+                    String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+                    String filename = testClassName + "-" + timestamp + ".png";
+
+                    Path outputDir = FMLPaths.GAMEDIR.get().resolve("clientsmoke-reports").resolve("screenshots");
+                    Files.createDirectories(outputDir);
+                    Path outputFile = outputDir.resolve(filename);
+
+                    nativeimage.writeToFile(outputFile);
+                    LOGGER.info("[ClientSmoke] World screenshot saved: {}", outputFile.toAbsolutePath());
+
+                    nativeimage.close();
+
+                    // Show HUD for the next screenshot — trigger HUD sub-flow
+                    mc.options.hideGui = false;
+                    hudCapturePending = true;
+                    transitionTo(ClientSmokeState.HUD_SCREENSHOT,
+                            "World screenshot saved — awaiting HUD screenshot on GUI pass");
+                } catch (Exception e) {
+                    LOGGER.error("[ClientSmoke] Screenshot processing failed: {}", e.getMessage(), e);
+                    try { mc.options.hideGui = false; } catch (Exception ignored) {}
+                    if (nativeimage != null) nativeimage.close();
+                    transitionTo(ClientSmokeState.ERROR, "Screenshot processing failed: " + e.getMessage());
+                }
+            });
+
+            // Return immediately — the callback handles everything async
+            return;
     }
 
     // ── State handlers ────────────────────────────────────────────
@@ -462,6 +443,87 @@ public final class ClientSmokeStateMachine {
     private static void handleScreenshot() {
         // Reset one-frame capture guard at start of each tick
         screenshotTakenThisFrame = false;
+    }
+
+    /** Tick handler for HUD_SCREENSHOT state — resets the one-frame guard for GUI capture. */
+    private static void handleHudScreenshot() {
+        screenshotTakenThisFrame = false;
+    }
+
+    /**
+     * Captures a HUD-inclusive screenshot during {@link RenderGuiEvent.Post}.
+     *
+     * <p>This fires AFTER all GUI layers (including mod GuiLayers) have rendered.
+     * Captures the framebuffer, runs the visual verification hook, and saves
+     * with a {@code _hud} suffix.</p>
+     */
+    @SubscribeEvent
+    public static void onRenderGuiPost(RenderGuiEvent.Post event) {
+        if (!hudCapturePending || state != ClientSmokeState.HUD_SCREENSHOT) {
+            return;
+        }
+
+        if (screenshotTakenThisFrame) {
+            return;
+        }
+        screenshotTakenThisFrame = true;
+        hudCapturePending = false;
+
+        Minecraft mc = Minecraft.getInstance();
+        int capturedTestIndex = testIndex;
+
+        Screenshot.takeScreenshot(mc.getMainRenderTarget(), nativeimage -> {
+            try {
+                if (nativeimage == null) {
+                    throw new IllegalStateException("HUD screenshot capture did not produce an image");
+                }
+
+                String testClassName;
+                if (discoveredTests.isEmpty()) {
+                    testClassName = "NoTests";
+                } else {
+                    String fqcn = discoveredTests.get(capturedTestIndex).className();
+                    testClassName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+                }
+
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+                String filename = testClassName + "_hud-" + timestamp + ".png";
+
+                Path outputDir = FMLPaths.GAMEDIR.get().resolve("clientsmoke-reports").resolve("screenshots");
+                Files.createDirectories(outputDir);
+                Path outputFile = outputDir.resolve(filename);
+
+                nativeimage.writeToFile(outputFile);
+                LOGGER.info("[ClientSmoke] HUD screenshot saved: {}", outputFile.toAbsolutePath());
+
+                // Run visual verification on HUD-inclusive image
+                try {
+                    ClientSmokeVisualHooks.verifyCapture(nativeimage);
+                } catch (Exception visualFailure) {
+                    markCurrentTestFailed(visualFailure, "visual verification failed");
+                    LOGGER.warn("[ClientSmoke] ✗ FAIL — visual verification for {} — {}",
+                            testClassName, visualFailure.toString());
+                }
+
+                nativeimage.close();
+                ClientSmokeVisualHooks.clear();
+
+                int nextIndex = capturedTestIndex + 1;
+                if (nextIndex < discoveredTests.size()) {
+                    testIndex = nextIndex;
+                    transitionTo(ClientSmokeState.TEST_EXEC,
+                            "Test " + (nextIndex + 1) + "/" + discoveredTests.size() + " — next test");
+                } else {
+                    transitionTo(ClientSmokeState.REPORT,
+                            "All " + discoveredTests.size() + " test(s) complete — generating report");
+                }
+            } catch (Exception e) {
+                LOGGER.error("[ClientSmoke] HUD screenshot processing failed: {}", e.getMessage(), e);
+                ClientSmokeVisualHooks.clear();
+                if (nativeimage != null) nativeimage.close();
+                transitionTo(ClientSmokeState.ERROR, "HUD screenshot failed: " + e.getMessage());
+            }
+        });
     }
 
     /**
