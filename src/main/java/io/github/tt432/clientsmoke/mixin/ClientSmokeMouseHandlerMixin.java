@@ -15,7 +15,7 @@ public class ClientSmokeMouseHandlerMixin {
 
     @Inject(method = "grabMouse", at = @At("HEAD"), cancellable = true)
     private void clientsmoke$preventMouseGrab(CallbackInfo ci) {
-        if (ClientSmokeConfig.isEnabled()) {
+        if (ClientSmokeConfig.isEnabled() || ClientSmokeConfig.isPreventMouseGrab()) {
             ci.cancel();
         }
     }

@@ -56,6 +56,19 @@ public class ClientSmokeMod {
 
     private void onClientSetup(FMLClientSetupEvent event) {
         if (!ClientSmokeConfig.isEnabled()) {
+            if (ClientSmokeConfig.isPreventMouseGrab() || ClientSmokeConfig.isMinimizeWindow()) {
+                event.enqueueWork(() -> {
+                    long window = net.minecraft.client.Minecraft.getInstance().getWindow().getWindow();
+                    if (ClientSmokeConfig.isPreventMouseGrab()) {
+                        GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+                        LOGGER.info("[ClientSmoke] Mouse cursor released (standalone)");
+                    }
+                    if (ClientSmokeConfig.isMinimizeWindow()) {
+                        GLFW.glfwIconifyWindow(window);
+                        LOGGER.info("[ClientSmoke] Window minimized (standalone)");
+                    }
+                });
+            }
             return;
         }
         event.enqueueWork(() -> {

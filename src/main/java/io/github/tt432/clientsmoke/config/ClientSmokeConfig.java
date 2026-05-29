@@ -128,6 +128,26 @@ public final class ClientSmokeConfig {
         return EXIT_AFTER_SMOKE.get();
     }
 
+    /**
+     * 系统属性：eyelib.preventMouseGrab
+     * 设置为 true 时阻止鼠标捕获，与 smoke test 启用状态无关。
+     */
+    public static boolean isPreventMouseGrab() {
+        String prop = System.getProperty("eyelib.preventMouseGrab");
+        if (prop != null) return Boolean.parseBoolean(prop);
+        return false;
+    }
+
+    /**
+     * 系统属性：eyelib.minimizeWindow
+     * 设置为 true 时启动后最小化窗口。
+     */
+    public static boolean isMinimizeWindow() {
+        String prop = System.getProperty("eyelib.minimizeWindow");
+        if (prop != null) return Boolean.parseBoolean(prop);
+        return false;
+    }
+
     private ClientSmokeConfig() {
         // Utility class — no instantiation
     }
