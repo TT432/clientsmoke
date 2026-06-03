@@ -58,14 +58,26 @@ public class ClientSmokeMod {
         if (!ClientSmokeConfig.isEnabled()) {
             if (ClientSmokeConfig.isPreventMouseGrab() || ClientSmokeConfig.isMinimizeWindow()) {
                 event.enqueueWork(() -> {
-                    long window = net.minecraft.client.Minecraft.getInstance().getWindow().getWindow();
+                    net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                    long window = mc.getWindow().getWindow();
                     if (ClientSmokeConfig.isPreventMouseGrab()) {
                         GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
                         LOGGER.info("[ClientSmoke] Mouse cursor released (standalone)");
                     }
                     if (ClientSmokeConfig.isMinimizeWindow()) {
-                        GLFW.glfwIconifyWindow(window);
-                        LOGGER.info("[ClientSmoke] Window minimized (standalone)");
+                        // 推迟到 TitleScreen 出现后执行，避免加载阶段最小化导致 PauseScreen
+                        Object listener = new Object() {
+                            @net.minecraftforge.eventbus.api.SubscribeEvent
+                            public void onTick(net.minecraftforge.event.TickEvent.ClientTickEvent e) {
+                                if (e.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+                                if (mc.screen instanceof net.minecraft.client.gui.screens.TitleScreen) {
+                                    GLFW.glfwIconifyWindow(mc.getWindow().getWindow());
+                                    LOGGER.info("[ClientSmoke] Window minimized (standalone)");
+                                    net.minecraftforge.common.MinecraftForge.EVENT_BUS.unregister(this);
+                                }
+                            }
+                        };
+                        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(listener);
                     }
                 });
             }
