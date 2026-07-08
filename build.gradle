@@ -57,6 +57,7 @@ legacyForge {
 }
 
 dependencies {
+    api 'io.github.tt432:clientsmokeannotation:1.0.0'
     compileOnly 'org.jspecify:jspecify:1.0.0'
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
