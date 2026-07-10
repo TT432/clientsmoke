@@ -45,6 +45,8 @@ sourceSets.main.java.srcDirs = [stonecutterMainBase.map { it.dir('java') }]
 sourceSets.main.resources.srcDirs = [stonecutterMainBase.map { it.dir('resources') }]
 compileJava.dependsOn 'stonecutterGenerate'
 processResources.dependsOn 'stonecutterGenerate'
+tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'stonecutterGenerate' }
+tasks.matching { it.name == 'createMinecraftArtifacts' }.configureEach { dependsOn 'stonecutterGenerate' }
 
 // Stonecutter file handler 处理 clientsmoke.mixins.json 的 //? 版本条件（仅 legacy 编译 mixin）。
 def cleanGeneratedJson = tasks.register('cleanGeneratedJson') {
@@ -200,6 +202,7 @@ publishing {
     publications {
         mavenJava(MavenPublication) {
             from components.java
+            artifactId = 'clientsmoke'
         }
     }
     repositories {
