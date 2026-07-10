@@ -210,6 +210,23 @@ publishing {
     }
 }
 
+// ModDevGradle 的 reobfJar 会把 jar 产物替换为 SRG 名称（intermediate）。
+// 主项目 dev 环境需要 Mojang 映射，所以 publishToMavenLocal 后需要覆盖为 dev JAR。
+def _archivesName = base.archivesName.get()
+def _version = version
+def _groupId = mod_group_id
+def _buildDir = layout.buildDirectory.get().asFile
+tasks.named('publishToMavenLocal') {
+    doLast {
+        def devJar = new File(_buildDir, "devlibs/${_archivesName}-${_version}.jar")
+        def repoDir = new File(System.getProperty('user.home'), ".m2/repository/${_groupId.replace('.', '/')}/clientsmoke/${_version}")
+        def target = new File(repoDir, "clientsmoke-${_version}.jar")
+        if (devJar.exists() && target.exists()) {
+            java.nio.file.Files.copy(devJar.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            logger.lifecycle('Replaced reobf JAR with dev JAR (Mojang mappings) at {}', target)
+        }
+    }
+}
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
