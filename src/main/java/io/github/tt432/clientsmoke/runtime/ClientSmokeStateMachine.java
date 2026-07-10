@@ -105,6 +105,8 @@ public final class ClientSmokeStateMachine {
 
     /** Game time at which world stabilization began. {@code -1L} = not yet started. */
     private static long stabilizeStartTick = -1L;
+    /** Game time at which the current test's delay countdown began. {@code -1L} = no delay pending. */
+    private static long delayStartTick = -1L;
 
     /** World name for the test world. Hardcoded for v1. */
     private static final String WORLD_NAME = "ClientSmokeTest";
@@ -221,19 +223,31 @@ public final class ClientSmokeStateMachine {
         NativeImage nativeimage = null;
 
         try {
-            // ── Step 1: Read framebuffer into NativeImage (per D-06 pattern) ──
-            // Verified from Forge 1.20.1-47.1.3 sources: RenderTarget.width/height are public int fields
-            RenderTarget framebuffer = mc.getMainRenderTarget();
-            int width = framebuffer.width;
-            int height = framebuffer.height;
+            // ── Step 1: Determine capture source (dedicated FBO or main framebuffer) ──
+            RenderTarget captureTarget = mc.getMainRenderTarget();
+            boolean useFBO = false;
 
             ClientSmokeVisualHooks.renderBeforeCapture(mc);
 
+            // If a SceneRenderer is registered, render to its dedicated FBO and capture from there
+            if (ClientSmokeVisualHooks.getSceneRenderTarget() != null) {
+                ClientSmokeVisualHooks.renderScene(mc);
+                captureTarget = ClientSmokeVisualHooks.getSceneRenderTarget();
+                useFBO = true;
+            }
+
+            int width = captureTarget.width;
+            int height = captureTarget.height;
+
             // Per RESEARCH.md Code Examples: create NativeImage, bind color texture, download, flip
             nativeimage = new NativeImage(width, height, false);
-            RenderSystem.bindTexture(framebuffer.getColorTextureId());
+            RenderSystem.bindTexture(captureTarget.getColorTextureId());
             nativeimage.downloadTexture(0, true);   // read GL texture into NativeImage
             nativeimage.flipY();                     // OpenGL bottom-left → image top-left
+            // Restore main framebuffer after FBO capture
+            if (useFBO) {
+                mc.getMainRenderTarget().bindWrite(true);
+            }
 
             // ── Step 2: Determine output filename (per D-14, D-15) ──
             // Per D-15: className uses getSimpleName() (no package prefix)
@@ -630,16 +644,47 @@ public final class ClientSmokeStateMachine {
     }
 
     /**
-     * Pass-through anchor between test execution and HUD hiding.
+     * Delay countdown between test execution and screenshot capture.
      *
-     * <p>Per D-08: No state mutation — {@code testIndex} is already
-     * pointing at the correct test. This simply transitions to
-     * {@link ClientSmokeState#HUD_HIDE} to begin the screenshot cycle
-     * for the current test's screen state.</p>
+     * <p>Implements {@code @ClientSmoke(delayTicks=N)}: after the test constructor
+     * runs (which may schedule server commands), the state machine waits N ticks
+     * before proceeding to {@link ClientSmokeState#HUD_HIDE} for screenshot capture.</p>
+     *
+     * <p>This ensures server-initiated changes (block fills, entity spawns, weather,
+     * time-of-day) have time to propagate to the client before the screenshot is taken.</p>
+     *
+     * <p>When {@code delayTicks == 0} (the default), this is a pass-through:
+     * transitions immediately to HUD_HIDE as in the original implementation.</p>
      */
     private static void handleReposition() {
-        transitionTo(ClientSmokeState.HUD_HIDE,
-                "Repositioned — capturing screenshot for test " + (testIndex + 1) + "/" + discoveredTests.size());
+        Minecraft mc = Minecraft.getInstance();
+        int delayTicks = 0;
+        if (testIndex < discoveredTests.size()) {
+            delayTicks = discoveredTests.get(testIndex).delayTicks();
+        }
+
+        if (delayTicks <= 0) {
+            transitionTo(ClientSmokeState.HUD_HIDE,
+                    "No delay — capturing screenshot for test " + (testIndex + 1) + "/" + discoveredTests.size());
+            return;
+        }
+
+        // First entry: record start tick
+        if (delayStartTick < 0) {
+            delayStartTick = mc.level.getGameTime();
+            LOGGER.info("[ClientSmoke] Waiting {} ticks for test '{}' (server command sync)",
+                    delayTicks, discoveredTests.get(testIndex).className());
+            return; // stay in REPOSITION
+        }
+
+        long elapsed = mc.level.getGameTime() - delayStartTick;
+        if (elapsed >= delayTicks) {
+            delayStartTick = -1L;
+            transitionTo(ClientSmokeState.HUD_HIDE,
+                    "Delay complete (" + elapsed + " ticks) — capturing screenshot for test "
+                            + (testIndex + 1) + "/" + discoveredTests.size());
+        }
+        // else: stay in REPOSITION — no log spam
     }
 
     /**

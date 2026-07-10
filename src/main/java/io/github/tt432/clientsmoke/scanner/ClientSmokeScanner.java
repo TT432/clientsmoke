@@ -45,7 +45,8 @@ public final class ClientSmokeScanner {
             String className,
             String description,
             int priority,
-            String modId
+            String modId,
+            int delayTicks
     ) {}
 
     /**
@@ -78,12 +79,12 @@ public final class ClientSmokeScanner {
 
                 String className = annotationData.memberName();
                 Map<String, Object> data = annotationData.annotationData();
-
                 String description = extractString(data, "description", "");
                 int priority = extractInt(data, "priority", 0);
                 String modId = extractString(data, "modId", "");
+                int delayTicks = extractInt(data, "delayTicks", 0);
 
-                discovered.add(new DiscoveredTest(className, description, priority, modId));
+                discovered.add(new DiscoveredTest(className, description, priority, modId, delayTicks));
             }
         }
 
