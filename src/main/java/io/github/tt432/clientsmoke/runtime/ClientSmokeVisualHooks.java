@@ -14,36 +14,17 @@ import net.minecraft.client.Minecraft;
  * <p><strong>Three hook types:</strong></p>
  * <ul>
  *   <li>{@link SceneRenderer} — dedicated FBO renderer: test renders its scene
- *       into a private {@link RenderTarget} with controlled background.
- *       The state machine captures from this FBO instead of the main framebuffer,
- *       eliminating all background noise (sky, terrain, clouds).</li>
- *   <li>{@link RenderHook} — legacy pre-capture hook on the main framebuffer.
- *       Runs before screenshot capture; useful for HUD overlay tests.</li>
+ *       into a private {@link RenderTarget} with controlled background.</li>
+ *   <li>{@link RenderHook} — pre-capture hook on the main framebuffer.</li>
  *   <li>{@link CaptureVerifier} — post-capture pixel analysis on the captured image.</li>
  * </ul>
+ *
+ * @author TT432
  */
 public final class ClientSmokeVisualHooks {
 
-    /**
-     * Dedicated FBO scene renderer.
-     *
-     * <p>The test receives a {@link RenderTarget} of the specified dimensions.
-     * It is responsible for:</p>
-     * <ol>
-     *   <li>Binding the FBO ({@code rt.bindWrite(true)})</li>
-     *   <li>Clearing to a known background color</li>
-     *   <li>Rendering entities/models into the FBO via eyelib's render pipeline</li>
-     *   <li>Restoring the main framebuffer ({@code mc.getMainRenderTarget().bindWrite(true)})</li>
-     * </ol>
-     *
-     * <p>The state machine then captures from {@code rt} instead of the main framebuffer.</p>
-     */
     @FunctionalInterface
     public interface SceneRenderer {
-        /**
-         * @param mc     Minecraft instance
-         * @param rt     dedicated render target (pre-allocated, test-owned dimensions)
-         */
         void render(Minecraft mc, RenderTarget rt) throws Exception;
     }
 
@@ -62,23 +43,12 @@ public final class ClientSmokeVisualHooks {
     private static RenderHook renderHook;
     private static CaptureVerifier captureVerifier;
 
-    /**
-     * Register a dedicated FBO scene renderer.
-     *
-     * <p>When set, the state machine will:</p>
-     * <ol>
-     *   <li>Call {@code sceneRenderer.render(mc, rt)} on the render thread</li>
-     *   <li>Capture from {@code rt} instead of the main framebuffer</li>
-     *   <li>Call {@code captureVerifier.verify(image)} on the captured image</li>
-     * </ol>
-     *
-     * @param width      FBO width in pixels
-     * @param height     FBO height in pixels
-     * @param renderer   scene renderer that fills the FBO
-     * @param verifier   post-capture pixel analysis
-     */
     public static void setScene(int width, int height, SceneRenderer renderer, CaptureVerifier verifier) {
+        //? if modern {
+        ClientSmokeVisualHooks.sceneRenderTarget = new com.mojang.blaze3d.pipeline.TextureTarget(null, width, height, true);
+        //?} else {
         ClientSmokeVisualHooks.sceneRenderTarget = new com.mojang.blaze3d.pipeline.TextureTarget(width, height, true, Minecraft.ON_OSX);
+        //?}
         ClientSmokeVisualHooks.sceneRenderer = renderer;
         ClientSmokeVisualHooks.captureVerifier = verifier;
     }
@@ -88,10 +58,6 @@ public final class ClientSmokeVisualHooks {
         ClientSmokeVisualHooks.captureVerifier = captureVerifier;
     }
 
-    /**
-     * Returns the dedicated FBO if a {@link SceneRenderer} is registered, otherwise null.
-     * Called by the state machine to decide which render target to capture from.
-     */
     static RenderTarget getSceneRenderTarget() {
         return sceneRenderTarget;
     }

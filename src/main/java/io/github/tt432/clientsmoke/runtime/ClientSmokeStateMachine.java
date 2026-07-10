@@ -21,9 +21,18 @@ import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+//? if legacy {
 import net.minecraftforge.event.TickEvent;
+//?} else {
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+//?}
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+//? if legacy {
 import net.minecraftforge.fml.common.Mod;
+//?} else {
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.common.EventBusSubscriber;
+//?}
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import org.slf4j.Logger;
@@ -63,7 +72,11 @@ import java.util.List;
  * @see ClientSmokeState
  * @see ClientSmokeConfig
  */
+//? if legacy {
 @Mod.EventBusSubscriber(modid = ClientSmokeMod.MOD_ID, value = Dist.CLIENT)
+//?} else {
+@EventBusSubscriber(modid = ClientSmokeMod.MOD_ID, value = Dist.CLIENT)
+//?}
 public final class ClientSmokeStateMachine {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientSmokeStateMachine.class);
@@ -141,10 +154,14 @@ public final class ClientSmokeStateMachine {
     }
 
     @SubscribeEvent
+//? if legacy {
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.START) {
             return;
         }
+//?} else {
+    public static void onClientTick(ClientTickEvent.Pre event) {
+//?}
 
         // Terminal states: IDLE and ERROR halt processing.
         // EXIT is NOT terminal — its handler must receive ticks for the countdown.
@@ -174,6 +191,15 @@ public final class ClientSmokeStateMachine {
         }
     }
 
+    //? if !legacy {
+    @SubscribeEvent
+    public static void releaseMouseOnPostTick(ClientTickEvent.Post event) {
+        if (ClientSmokeConfig.isEnabled() || ClientSmokeConfig.isPreventMouseGrab()) {
+            ClientSmokeMod.releaseMouse(Minecraft.getInstance());
+        }
+    }
+    //?}
+
     /**
      * Captures a screenshot on the render thread during
      * {@link RenderLevelStageEvent.Stage#AFTER_LEVEL}.
@@ -202,11 +228,14 @@ public final class ClientSmokeStateMachine {
      * @param event the render level stage event
      */
     @SubscribeEvent
+//? if <26.1 {
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        // Only capture on AFTER_LEVEL stage
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) {
             return;
         }
+//?} else {
+    public static void onRenderLevelStage(RenderLevelStageEvent.AfterLevel event) {
+//?}
 
         // Only capture when state machine is in SCREENSHOT state
         if (state != ClientSmokeState.SCREENSHOT) {
@@ -239,15 +268,15 @@ public final class ClientSmokeStateMachine {
             int width = captureTarget.width;
             int height = captureTarget.height;
 
-            // Per RESEARCH.md Code Examples: create NativeImage, bind color texture, download, flip
+            //? if <26.1 {
             nativeimage = new NativeImage(width, height, false);
             RenderSystem.bindTexture(captureTarget.getColorTextureId());
-            nativeimage.downloadTexture(0, true);   // read GL texture into NativeImage
-            nativeimage.flipY();                     // OpenGL bottom-left → image top-left
-            // Restore main framebuffer after FBO capture
+            nativeimage.downloadTexture(0, true);
+            nativeimage.flipY();
             if (useFBO) {
                 mc.getMainRenderTarget().bindWrite(true);
             }
+            //?}
 
             // ── Step 2: Determine output filename (per D-14, D-15) ──
             // Per D-15: className uses getSimpleName() (no package prefix)
@@ -270,6 +299,7 @@ public final class ClientSmokeStateMachine {
             Files.createDirectories(outputDir);
             Path outputFile = outputDir.resolve(filename);
 
+            //? if <26.1 {
             // ── Step 4: Write PNG (per D-06: NativeImage.writeToFile) ──
             nativeimage.writeToFile(outputFile);
             LOGGER.info("[ClientSmoke] Screenshot saved: {}", outputFile.toAbsolutePath());
@@ -278,9 +308,10 @@ public final class ClientSmokeStateMachine {
                 ClientSmokeVisualHooks.verifyCapture(nativeimage);
             } catch (Exception visualFailure) {
                 markCurrentTestFailed(visualFailure, "visual verification failed");
-                LOGGER.warn("[ClientSmoke] ✗ FAIL — visual verification for {} — {}",
+                LOGGER.warn("[ClientSmoke] FAIL — visual verification for {} — {}",
                         testClassName, visualFailure.toString());
             }
+            //?}
 
             // ── Step 5: Restore HUD visibility (per D-02, D-10) ──
             mc.options.hideGui = false;
@@ -351,21 +382,35 @@ public final class ClientSmokeStateMachine {
             if (mc.getLevelSource().levelExists(WORLD_NAME)) {
                 // World already exists — reuse it
                 LOGGER.info("[ClientSmoke] World '{}' already exists — reusing", WORLD_NAME);
+                //? if legacy {
                 mc.createWorldOpenFlows().loadLevel(null, WORLD_NAME);
+                //?} else {
+                mc.createWorldOpenFlows().openWorld(WORLD_NAME, () -> {});
+                //?}
             } else {
                 // Create a fresh creative superflat world
                 LOGGER.info("[ClientSmoke] Creating new world '{}' (creative flat, seed={})",
                         WORLD_NAME, WORLD_SEED);
 
+                //? if modern {
                 LevelSettings levelSettings = new LevelSettings(
                         WORLD_NAME,
                         GameType.CREATIVE,
-                        false,                          // hardcore = false
+                        new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false),
+                        true,
+                        WorldDataConfiguration.DEFAULT
+                );
+                //?} else {
+                LevelSettings levelSettings = new LevelSettings(
+                        WORLD_NAME,
+                        GameType.CREATIVE,
+                        false,
                         Difficulty.NORMAL,
-                        true,                           // allowCommands = true
+                        true,
                         new net.minecraft.world.level.GameRules(),
                         WorldDataConfiguration.DEFAULT
                 );
+                //?}
 
                 WorldOptions worldOptions = new WorldOptions(
                         WORLD_SEED,
@@ -379,7 +424,13 @@ public final class ClientSmokeStateMachine {
                         WORLD_NAME,
                         levelSettings,
                         worldOptions,
+                        //? if modern {
+                        WorldPresets::createFlatWorldDimensions
+                        //?} else {
                         ClientSmokeStateMachine::createFlatWorldDimensions
+                        //?}
+                        //? if !legacy
+                        , null
                 );
             }
 
@@ -390,15 +441,10 @@ public final class ClientSmokeStateMachine {
         }
     }
 
+    //? if <26.1 {
     /**
      * Creates flat world dimensions for the test world using the {@link WorldPresets#FLAT}
      * preset from the world preset registry.
-     *
-     * <p>Method reference compatible with
-     * {@code WorldOpenFlows.createFreshLevel}'s {@code Function<RegistryAccess, WorldDimensions>} parameter.</p>
-     *
-     * @param registry the registry access from the world creation datapack context
-     * @return the flat world dimensions produced by the FLAT preset
      */
     private static WorldDimensions createFlatWorldDimensions(RegistryAccess registry) {
         return registry.registryOrThrow(Registries.WORLD_PRESET)
@@ -406,6 +452,7 @@ public final class ClientSmokeStateMachine {
                 .value()
                 .createWorldDimensions();
     }
+    //?}
 
     private static void handleWorldWait() {
         Minecraft mc = Minecraft.getInstance();

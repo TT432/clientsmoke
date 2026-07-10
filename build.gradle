@@ -1,103 +1,199 @@
 plugins {
     id 'java-library'
-    id 'io.freefair.lombok' version '8.6'
-    id 'net.neoforged.moddev.legacyforge' version '2.0.91'
     id 'maven-publish'
 }
 
-version = "${mod_version}+${minecraft_version}-forge"
+// Stonecutter 0.9 centralScript: 此脚本对每个 version node (:1.20.1, :1.21.1, :26.1.2) 各跑一次。
+// 版本比较用 sc.current.parsed.matches（0.8+ API）。
+def isLegacyForge = sc.current.parsed.matches '<1.20.6'
+def isModern = sc.current.parsed.matches '>=26.1'
+
+stonecutter {
+    constants['legacy'] = isLegacyForge
+    constants['modern'] = isModern
+
+    // NeoForge 包名替换（类名/API 相同，仅包路径不同）
+    // 源码统一用 Forge 包名，neoforge 版本自动替换
+    replacements.string(!isLegacyForge) {
+        // Config spec
+        replace 'net.minecraftforge.common.ForgeConfigSpec', 'net.neoforged.neoforge.common.ModConfigSpec'
+        replace 'ForgeConfigSpec', 'ModConfigSpec'
+        // FML core
+        replace 'net.minecraftforge.fml.ModList', 'net.neoforged.fml.ModList'
+        replace 'net.minecraftforge.fml.loading.FMLPaths', 'net.neoforged.fml.loading.FMLPaths'
+        // Scan data
+        replace 'net.minecraftforge.forgespi.language.ModFileScanData', 'net.neoforged.neoforgespi.language.ModFileScanData'
+        // Dist / OnlyIn
+        replace 'net.minecraftforge.api.distmarker', 'net.neoforged.api.distmarker'
+        // SubscribeEvent (eventbus)
+        replace 'net.minecraftforge.eventbus.api', 'net.neoforged.bus.api'
+        // RenderLevelStageEvent
+        replace 'net.minecraftforge.client.event.RenderLevelStageEvent', 'net.neoforged.neoforge.client.event.RenderLevelStageEvent'
+    }
+
+    // 26.1+ Window.getOpenGLWindow() 重命名为 handle()
+    replacements.string(isModern) {
+        replace '.getWindow().getWindow()', '.getWindow().handle()'
+    }
+}
+
+// Stonecutter centralScript 不自动替换 sourceSet（0.7-0.9 均如此）：compileJava 默认编译 src/main/java，
+// 但加了 //? 注释后原始源码有裸露的 else 分支导致语法错误。
+// 必须让 sourceSet 指向 stonecutterGenerate 的生成目录。
+def stonecutterMainBase = layout.buildDirectory.dir('generated/stonecutter/main')
+sourceSets.main.java.srcDirs = [stonecutterMainBase.map { it.dir('java') }]
+sourceSets.main.resources.srcDirs = [stonecutterMainBase.map { it.dir('resources') }]
+compileJava.dependsOn 'stonecutterGenerate'
+processResources.dependsOn 'stonecutterGenerate'
+
+// Stonecutter file handler 处理 clientsmoke.mixins.json 的 //? 版本条件（仅 legacy 编译 mixin）。
+def cleanGeneratedJson = tasks.register('cleanGeneratedJson') {
+    dependsOn 'stonecutterGenerate'
+    doLast {
+        def file = stonecutterMainBase.get().dir('resources').file('clientsmoke.mixins.json').asFile
+        if (!file.exists()) return
+        def text = file.text
+        text = text.replaceAll(/(?s)\/\*.*?\*\//, '')
+        text = text.replaceAll(/\/\/[^\r\n]*/, '')
+        text = text.replaceAll(/,(\s*[\]\}])/, '$1')
+        file.text = groovy.json.JsonOutput.prettyPrint(
+                groovy.json.JsonOutput.toJson(new groovy.json.JsonSlurper().parseText(text))
+        )
+    }
+}
+processResources.dependsOn cleanGeneratedJson
+
+if (isLegacyForge) {
+    apply plugin: 'net.neoforged.moddev.legacyforge'
+} else {
+    apply plugin: 'net.neoforged.moddev'
+}
+
+version = "${mod_version}+${minecraft_version}-${isLegacyForge ? 'forge' : 'neoforge'}"
 group = mod_group_id
 
 base {
     archivesName = 'clientsmoke'
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+java.toolchain.languageVersion = JavaLanguageVersion.of(property('java_version') as int)
 
-sourceSets {
-    test {
-        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
-        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+if (isLegacyForge) {
+    legacyForge {
+        version = project.minecraft_version + '-' + project.forge_version
+
+        parchment {
+            mappingsVersion = project.parchment_mappings_version
+            minecraftVersion = project.parchment_minecraft_version
+        }
+
+        mods {
+            clientsmoke {
+                sourceSet(sourceSets.main)
+            }
+        }
+
+        runs {
+            client {
+                client()
+                systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
+            }
+
+            clientSmoke {
+                client()
+                gameDirectory = project.file('run/clientsmoke')
+                systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
+                systemProperty 'clientsmoke.enabled', 'true'
+                systemProperty 'clientsmoke.autoExit', 'true'
+            }
+        }
+    }
+} else {
+    neoForge {
+        version = project.neoforge_version
+
+        mods {
+            clientsmoke {
+                sourceSet(sourceSets.main)
+            }
+        }
+
+        runs {
+            client {
+                client()
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'clientsmoke'
+            }
+
+            clientSmoke {
+                client()
+                gameDirectory = project.file('run/clientsmoke')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'clientsmoke'
+                systemProperty 'clientsmoke.enabled', 'true'
+                systemProperty 'clientsmoke.autoExit', 'true'
+            }
+        }
     }
 }
 
-repositories {
-    mavenCentral()
-    mavenLocal()
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
 }
 
-legacyForge {
-    version = project.minecraft_version + '-' + project.forge_version
-
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+if (isLegacyForge) {
+    mixin {
+        add sourceSets.main, 'clientsmoke.refmap.json'
+        config 'clientsmoke.mixins.json'
     }
 
-    mods {
-        clientsmoke {
-            sourceSet(sourceSets.main)
-        }
-    }
-
-    runs {
-        client {
-            client()
-            systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
-        }
-
-        clientSmoke {
-            client()
-            gameDirectory = project.file('run/clientsmoke')
-            systemProperty 'forge.enabledGameTestNamespaces', 'clientsmoke'
-            systemProperty 'clientsmoke.enabled', 'true'
-            systemProperty 'clientsmoke.autoExit', 'true'
-        }
+    dependencies {
+        annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
     }
 }
 
 dependencies {
-    api 'io.github.tt432:clientsmokeannotation:1.0.0'
     compileOnly 'org.jspecify:jspecify:1.0.0'
-    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
-
-    testImplementation platform('org.junit:junit-bom:5.10.2')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-}
-
-mixin {
-    add sourceSets.main, 'clientsmoke.refmap.json'
-    config 'clientsmoke.mixins.json'
 }
 
 jar {
-    manifest.attributes([
-            'MixinConfigs': 'clientsmoke.mixins.json'
-    ])
+    if (isLegacyForge) {
+        manifest.attributes([
+                'MixinConfigs': 'clientsmoke.mixins.json'
+        ])
+    }
 }
 
-java {
-    withSourcesJar()
+// 非 legacy 版本排除 forge 专用的 mods.toml 和 mixins.json
+processResources {
+    if (isLegacyForge) {
+        exclude 'META-INF/neoforge.mods.toml'
+    } else {
+        exclude 'META-INF/mods.toml'
+        exclude 'clientsmoke.mixins.json'
+    }
 }
 
 tasks.named('processResources', ProcessResources).configure {
     def replaceProperties = [
+            minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
-            forge_version_range    : forge_version_range,
+            forge_version_range    : findProperty('forge_version_range') ?: '',
             loader_version_range   : loader_version_range,
-            mod_version            : mod_version,
+            neoforge_version_range : findProperty('neoforge_version_range') ?: '',
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
             mod_license            : mod_license,
+            mod_version            : mod_version,
             mod_authors            : mod_authors,
+            mod_description        : mod_description
     ]
-    inputs.properties(replaceProperties)
-    filesMatching('META-INF/mods.toml') {
-        expand(replaceProperties)
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
     }
+}
+
+java {
+    withSourcesJar()
 }
 
 publishing {
@@ -109,6 +205,10 @@ publishing {
     repositories {
         mavenLocal()
     }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 tasks.named('test').configure {

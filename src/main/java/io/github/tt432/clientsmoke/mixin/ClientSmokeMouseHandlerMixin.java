@@ -9,6 +9,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+//? if legacy {
+/**
+ * Prevents mouse grab during smoke test execution (Forge 1.20.1 only).
+ *
+ * <p>NeoForge versions handle mouse release via direct API calls in
+ * {@link io.github.tt432.clientsmoke.ClientSmokeMod} and the state machine's
+ * post-tick handler, without requiring a mixin.</p>
+ *
+ * @author TT432
+ */
 @OnlyIn(Dist.CLIENT)
 @Mixin(MouseHandler.class)
 public class ClientSmokeMouseHandlerMixin {
@@ -20,3 +30,4 @@ public class ClientSmokeMouseHandlerMixin {
         }
     }
 }
+//?}
