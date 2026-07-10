@@ -72,6 +72,8 @@ public final class EntitySceneRenderer {
      * @param bgArgb  ARGB background clear color
      */
     public static void beginScene(Minecraft mc, RenderTarget rt, int bgArgb) {
+        mc.renderBuffers().bufferSource().endBatch();
+
         rt.bindWrite(true);
 
         float a = ((bgArgb >> 24) & 0xFF) / 255.0F;
@@ -90,7 +92,24 @@ public final class EntitySceneRenderer {
         RenderSystem.setProjectionMatrix(proj, VertexSorting.ORTHOGRAPHIC_Z);
         //?}
 
-        Lighting.setupForEntityInInventory();
+        RenderSystem.getModelViewStack().pushPose();
+        RenderSystem.getModelViewStack().setIdentity();
+        RenderSystem.applyModelViewMatrix();
+
+        // Lighting will be set up per-entity in renderEntityAt() after the
+        // model-view matrix includes our view rotation, because setupLevel(matrix)
+        // transforms light directions by the inverse model-view to match
+        // the shader's normal space.
+
+        // Disable world fog: entity shader computes fog_distance as
+        // length((ModelViewMat * pos).xyz), which is ~11000 at our ENTITY_Z.
+        // The world's fog parameters (FogEnd ~192) would fully fog all entities.
+        RenderSystem.setShaderFogStart(Float.MAX_VALUE);
+        RenderSystem.setShaderFogEnd(Float.MAX_VALUE);
+
+        // Suppress eyelib's RenderLivingEventAdapter during scene rendering
+        // to prevent it from interfering with vanilla entity rendering in our FBO.
+        ClientSmokeVisualHooks.setSuppressRenderEvents(true);
     }
 
     /**
@@ -109,28 +128,44 @@ public final class EntitySceneRenderer {
     public static void renderEntityAt(Minecraft mc, Entity entity,
                                       float centerX, float centerY,
                                       float scale, float yaw) {
-        PoseStack poseStack = new PoseStack();
-        poseStack.pushPose();
-        poseStack.translate(centerX, centerY, ENTITY_Z);
-        poseStack.scale(scale, scale, scale);
-
-        // Standard inventory view: flip Y (Z-axis rotation) + pitch down
-        Quaternionf viewRot = new Quaternionf().rotationZ((float) Math.PI);
-        Quaternionf pitchRot = new Quaternionf().rotationX(
-                (float) Math.toRadians(VIEW_PITCH_DEG));
-        viewRot.mul(pitchRot);
-        poseStack.mulPose(viewRot);
-
         setEntityOrientation(entity, yaw);
 
         EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
         dispatcher.setRenderShadow(false);
 
-        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-        dispatcher.render(entity, 0, 0, 0, yaw, mc.getPartialTick(),
-                poseStack, bufferSource, LightTexture.FULL_BRIGHT);
+        // InventoryScreen approach: put position/scale/rotation on the model-view
+        // stack (which the shader uses directly), then pass a fresh identity PoseStack
+        // to the entity renderer. The entity renderer adds its own transforms
+        // (scale(-1,-1,1), translate(0,-1.5,0)) on the PoseStack.
+        PoseStack mvStack = RenderSystem.getModelViewStack();
+        mvStack.pushPose();
+        mvStack.translate(centerX, centerY, ENTITY_Z);
+        mvStack.scale(scale, scale, scale);
+        Quaternionf viewRot = new Quaternionf().rotationZ((float) Math.PI);
+        Quaternionf pitchRot = new Quaternionf().rotationX(
+                (float) Math.toRadians(VIEW_PITCH_DEG));
+        viewRot.mul(pitchRot);
+        mvStack.mulPose(viewRot);
+        RenderSystem.applyModelViewMatrix();
 
-        poseStack.popPose();
+        // Now that the model-view matrix includes our position/scale/rotation,
+        // set up level lighting. setupLevel transforms the world-space light
+        // directions by the inverse model-view matrix so they match the
+        // shader's ProjMat*ModelViewMat*Normal normal space.
+        Lighting.setupLevel(RenderSystem.getModelViewMatrix());
+        PoseStack entityPose = new PoseStack();
+        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
+        // Bypass EntityRenderDispatcher to avoid Forge's RenderLivingEvent.Pre
+        // and dispatcher's getRenderOffset/shadow/hitbox logic.
+        net.minecraft.client.renderer.entity.EntityRenderer<? super Entity> renderer =
+                dispatcher.getRenderer(entity);
+        entityPose.pushPose();
+        renderer.render(entity, yaw, mc.getPartialTick(), entityPose, bufferSource, LightTexture.FULL_BRIGHT);
+        entityPose.popPose();
+        bufferSource.endBatch();
+
+        mvStack.popPose();
+        RenderSystem.applyModelViewMatrix();
     }
 
     /**
@@ -141,8 +176,14 @@ public final class EntitySceneRenderer {
      * @param mc the Minecraft instance
      */
     public static void endScene(Minecraft mc) {
-        mc.renderBuffers().bufferSource().endBatch();
         mc.getEntityRenderDispatcher().setRenderShadow(true);
+
+        // Restore the model-view stack saved in beginScene
+        RenderSystem.getModelViewStack().popPose();
+        RenderSystem.applyModelViewMatrix();
+
+        // Re-enable eyelib's RenderLivingEventAdapter
+        ClientSmokeVisualHooks.setSuppressRenderEvents(false);
     }
 
     // ── Internal ──────────────────────────────────────────────────

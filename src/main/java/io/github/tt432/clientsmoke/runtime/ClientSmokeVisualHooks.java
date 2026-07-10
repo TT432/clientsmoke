@@ -43,6 +43,20 @@ public final class ClientSmokeVisualHooks {
     private static RenderHook renderHook;
     private static CaptureVerifier captureVerifier;
 
+    /**
+     * When true, eyelib's RenderLivingEventAdapter should skip processing
+     * to avoid interfering with entity rendering inside SceneRenderer callbacks.
+     */
+    private static boolean suppressRenderEvents = false;
+
+    public static boolean isSuppressRenderEvents() {
+        return suppressRenderEvents;
+    }
+
+    static void setSuppressRenderEvents(boolean v) {
+        suppressRenderEvents = v;
+    }
+
     public static void setScene(int width, int height, SceneRenderer renderer, CaptureVerifier verifier) {
         //? if modern {
         ClientSmokeVisualHooks.sceneRenderTarget = new com.mojang.blaze3d.pipeline.TextureTarget(null, width, height, true);
