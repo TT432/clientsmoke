@@ -822,6 +822,8 @@ public final class ClientSmokeStateMachine {
 
             LOGGER.info("[ClientSmoke] Reports written: JSON={}, XML={} ({} tests, {} passed, {} failed)",
                     outputFile.toAbsolutePath(), junitFile.toAbsolutePath(), testResults.size(), passed, failed);
+            // ── Retention: delete old reports beyond the configured limit ──
+            cleanupOldReports(outputDir);
 
         } catch (Exception e) {
             LOGGER.error("[ClientSmoke] Failed to write report to {}: {}", outputFile, e.getMessage(), e);
@@ -831,6 +833,89 @@ public final class ClientSmokeStateMachine {
 
         // Report written — proceed to exit
         transitionTo(ClientSmokeState.EXIT, "Report generated — initiating exit");
+    }
+    /**
+     * Deletes old report files (JSON + XML) and screenshots beyond the configured retention limit.
+     *
+     * <p>Industry standard (Allure, Gradle, Maven): local frameworks either overwrite or keep
+     * a bounded count. We keep the last {@code reportRetentionCount} runs (default 5).
+     * Reports are matched by {@code report-*.json} filename, sorted by embedded timestamp.
+     * Corresponding {@code junit-*.xml} files and screenshots from deleted runs are also removed.</p>
+     */
+    private static void cleanupOldReports(Path reportsDir) {
+        int maxReports = ClientSmokeConfig.REPORT_RETENTION_COUNT.get();
+        if (maxReports <= 0) {
+            return; // 0 = keep all
+        }
+
+        try {
+            // List all report-*.json files, sorted by name (= sorted by timestamp)
+            var reportFiles = tryListJsonReports(reportsDir);
+            if (reportFiles.size() <= maxReports) {
+                return; // within limit
+            }
+
+            // Delete the oldest reports (and their XML + screenshots)
+            int toDelete = reportFiles.size() - maxReports;
+            int deleted = 0;
+            for (int i = 0; i < toDelete; i++) {
+                Path jsonFile = reportFiles.get(i);
+                String timestamp = extractTimestamp(jsonFile.getFileName().toString());
+
+                // Delete JSON
+                Files.deleteIfExists(jsonFile);
+
+                // Delete corresponding XML
+                Path xmlFile = reportsDir.resolve("junit-" + timestamp + ".xml");
+                Files.deleteIfExists(xmlFile);
+
+                // Delete screenshots from this run (timestamp prefix match)
+                Path screenshotsDir = reportsDir.resolve("screenshots");
+                if (Files.isDirectory(screenshotsDir)) {
+                    try (var shots = Files.list(screenshotsDir)) {
+                        shots.filter(p -> p.getFileName().toString().contains(timestamp))
+                             .forEach(p -> {
+                                 try { Files.deleteIfExists(p); }
+                                 catch (Exception ignored) {}
+                             });
+                    }
+                }
+
+                deleted++;
+            }
+
+            if (deleted > 0) {
+                LOGGER.info("[ClientSmoke] Report retention: deleted {} old report(s) (keeping last {})",
+                        deleted, maxReports);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[ClientSmoke] Report retention cleanup failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Lists {@code report-*.json} files sorted oldest-first by embedded timestamp.
+     */
+    private static java.util.List<Path> tryListJsonReports(Path dir) throws java.io.IOException {
+        try (var files = Files.list(dir)) {
+            return files
+                    .filter(p -> p.getFileName().toString().startsWith("report-") && p.toString().endsWith(".json"))
+                    .sorted()
+                    .collect(java.util.stream.Collectors.toList());
+        }
+    }
+
+    /**
+     * Extracts the {@code yyyyMMdd-HHmmss} timestamp from a {@code report-yyyyMMdd-HHmmss.json} filename.
+     */
+    private static String extractTimestamp(String filename) {
+        // "report-yyyyMMdd-HHmmss.json" → "yyyyMMdd-HHmmss"
+        int start = filename.indexOf('-') + 1;
+        int end = filename.lastIndexOf('.');
+        if (start > 0 && end > start) {
+            return filename.substring(start, end);
+        }
+        return filename;
     }
 
     /**

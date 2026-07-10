@@ -72,6 +72,20 @@ public final class ClientSmokeConfig {
                     "Default: true"
             )
             .define("exitAfterSmoke", true);
+    /**
+     * Maximum number of historical reports (JSON + XML pairs) to keep.
+     * Older reports are automatically deleted when new ones are generated.
+     * Set to 0 to disable retention (keep all reports indefinitely).
+     * Default: 5 (keeps last 5 runs).
+     */
+    public static final ForgeConfigSpec.IntValue REPORT_RETENTION_COUNT = BUILDER
+            .comment(
+                    "Maximum number of historical reports to keep.",
+                    "Older reports (JSON + XML) and their screenshots are deleted when new ones are generated.",
+                    "Set to 0 to keep all reports indefinitely.",
+                    "Default: 5"
+            )
+            .defineInRange("reportRetentionCount", 5, 0, 100);
 
     // ──────────────────────────────────────────────
     // Built spec
