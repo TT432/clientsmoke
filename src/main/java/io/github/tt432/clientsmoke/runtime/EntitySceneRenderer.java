@@ -104,12 +104,13 @@ public final class EntitySceneRenderer {
         // Disable world fog: entity shader computes fog_distance as
         // length((ModelViewMat * pos).xyz), which is ~11000 at our ENTITY_Z.
         // The world's fog parameters (FogEnd ~192) would fully fog all entities.
+        // Disable world fog and set up dispatcher context.
         RenderSystem.setShaderFogStart(Float.MAX_VALUE);
         RenderSystem.setShaderFogEnd(Float.MAX_VALUE);
 
-        // Suppress eyelib's RenderLivingEventAdapter during scene rendering
-        // to prevent it from interfering with vanilla entity rendering in our FBO.
-        ClientSmokeVisualHooks.setSuppressRenderEvents(true);
+        // LevelRenderer calls entityRenderDispatcher.prepare() before entity rendering.
+        // Some renderers depend on the dispatcher's camera/cameraOrientation being set.
+        mc.getEntityRenderDispatcher().prepare(mc.level, mc.gameRenderer.getMainCamera(), null);
     }
 
     /**
@@ -152,20 +153,21 @@ public final class EntitySceneRenderer {
         // set up level lighting. setupLevel transforms the world-space light
         // directions by the inverse model-view matrix so they match the
         // shader's ProjMat*ModelViewMat*Normal normal space.
-        Lighting.setupLevel(RenderSystem.getModelViewMatrix());
+        // Set up level lighting with ONLY the rotation part. setupLevelDiffuseLighting
+        // does matrix.transform(Vector4f(lightDir, 1.0F)) — if the matrix contains
+        // translation/scale, the light "direction" becomes a nonsensical position.
+        // Using a pure rotation matrix ensures lights are correctly transformed.
+        org.joml.Matrix4f rotOnly = new org.joml.Matrix4f().rotation(viewRot);
+        Lighting.setupLevel(rotOnly);
 
-        net.minecraft.client.renderer.entity.EntityRenderer<? super Entity> renderer =
-                dispatcher.getRenderer(entity);
-
-        // Explicitly bind the entity texture to unit 0 before rendering.
-        net.minecraft.resources.ResourceLocation texLoc = renderer.getTextureLocation(entity);
-        mc.getTextureManager().bindForSetup(texLoc);
-
+        // Use dispatcher.render() — same path as LevelRenderer.renderEntity().
+        // This fires RenderLivingEvent.Pre, allowing eyelib's RenderLivingEventAdapter
+        // to render entities with a&s definitions via eyelib's own pipeline.
+        // For entities without a&s definitions, vanilla rendering proceeds.
         PoseStack entityPose = new PoseStack();
         MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-        entityPose.pushPose();
-        renderer.render(entity, yaw, mc.getPartialTick(), entityPose, bufferSource, LightTexture.FULL_BRIGHT);
-        entityPose.popPose();
+        dispatcher.render(entity, 0, 0, 0, yaw, mc.getPartialTick(),
+                entityPose, bufferSource, LightTexture.FULL_BRIGHT);
         bufferSource.endBatch();
         mvStack.popPose();
         RenderSystem.applyModelViewMatrix();
@@ -184,9 +186,6 @@ public final class EntitySceneRenderer {
         // Restore the model-view stack saved in beginScene
         RenderSystem.getModelViewStack().popPose();
         RenderSystem.applyModelViewMatrix();
-
-        // Re-enable eyelib's RenderLivingEventAdapter
-        ClientSmokeVisualHooks.setSuppressRenderEvents(false);
     }
 
     // ── Internal ──────────────────────────────────────────────────
