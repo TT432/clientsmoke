@@ -153,17 +153,20 @@ public final class EntitySceneRenderer {
         // directions by the inverse model-view matrix so they match the
         // shader's ProjMat*ModelViewMat*Normal normal space.
         Lighting.setupLevel(RenderSystem.getModelViewMatrix());
-        PoseStack entityPose = new PoseStack();
-        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-        // Bypass EntityRenderDispatcher to avoid Forge's RenderLivingEvent.Pre
-        // and dispatcher's getRenderOffset/shadow/hitbox logic.
+
         net.minecraft.client.renderer.entity.EntityRenderer<? super Entity> renderer =
                 dispatcher.getRenderer(entity);
+
+        // Explicitly bind the entity texture to unit 0 before rendering.
+        net.minecraft.resources.ResourceLocation texLoc = renderer.getTextureLocation(entity);
+        mc.getTextureManager().bindForSetup(texLoc);
+
+        PoseStack entityPose = new PoseStack();
+        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
         entityPose.pushPose();
         renderer.render(entity, yaw, mc.getPartialTick(), entityPose, bufferSource, LightTexture.FULL_BRIGHT);
         entityPose.popPose();
         bufferSource.endBatch();
-
         mvStack.popPose();
         RenderSystem.applyModelViewMatrix();
     }
