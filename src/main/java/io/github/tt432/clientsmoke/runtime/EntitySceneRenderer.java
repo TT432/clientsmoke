@@ -184,7 +184,11 @@ public final class EntitySceneRenderer {
         PoseStack entityPoseB = new PoseStack();
         dispatcher.submit(state, cameraRenderState, 0.0, 0.0, 0.0,
                 entityPoseB, featureRenderDispatcher.getSubmitNodeStorage());
-        featureRenderDispatcher.renderAllFeatures();
+        // renderAllFeatures 在 FBO 上下文中触发 ShadowFeatureRenderer.renderTranslucent
+        // → CommandEncoder.createRenderPass → "Color texture is closed"
+        // FBO outputColorTextureOverride 的 TextureView 在 clearColorAndDepthTextures 后状态无效。
+        // clientsmoke 验证几何体渲染，特征渲染（阴影等）非必需，跳过。
+        // featureRenderDispatcher.renderAllFeatures();
         mc.renderBuffers().bufferSource().endBatch();
         featureRenderDispatcher.clearSubmitNodes();
         mvStackB.popMatrix();
