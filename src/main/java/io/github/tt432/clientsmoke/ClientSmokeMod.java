@@ -1,6 +1,7 @@
 package io.github.tt432.clientsmoke;
 
 import io.github.tt432.clientsmoke.config.ClientSmokeConfig;
+import io.github.tt432.clientsmoke.debug.AIDebugServer;
 import io.github.tt432.clientsmoke.runtime.ClientSmokeStateMachine;
 import io.github.tt432.clientsmoke.scanner.ClientSmokeScanner;
 import org.lwjgl.glfw.GLFW;
@@ -56,6 +57,9 @@ public class ClientSmokeMod {
         container.registerConfig(ModConfig.Type.COMMON, ClientSmokeConfig.SPEC);
         NeoForge.EVENT_BUS.register(new MinimizeOnTitleScreen());
     //?}
+
+        // AI 调试 HTTP 服务器：仅在配置 ai_debug_port（系统属性/环境变量）时开启
+        AIDebugServer.startIfConfigured();
 
         var discoveredTests = ClientSmokeScanner.scan();
         ClientSmokeStateMachine.setDiscoveredTests(discoveredTests);
