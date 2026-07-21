@@ -235,13 +235,25 @@ class ClientSmokeExitCodeTest {
      * @return source file contents, or {@code null} if the file cannot be read
      */
     private static String readSourceFile() throws Exception {
-        String className = ClientSmokeStateMachine.class.getSimpleName() + ".java";
-        String path = "src/main/java/io/github/tt432/clientsmoke/runtime/" + className;
+        String path = "src/main/java/io/github/tt432/clientsmoke/runtime/ClientSmokeStateMachine.java";
         Path file = Paths.get(path);
         if (Files.exists(file)) {
             return Files.readString(file);
         }
-        return null;
+
+        var sourceUrl = ClientSmokeStateMachine.class.getResource("ClientSmokeStateMachine.class");
+        if (sourceUrl == null) {
+            return null;
+        }
+        Path projectRoot = Path.of(sourceUrl.toURI()).getParent();
+        while (projectRoot != null && !Files.exists(projectRoot.resolve("settings.gradle"))) {
+            projectRoot = projectRoot.getParent();
+        }
+        if (projectRoot == null) {
+            return null;
+        }
+        file = projectRoot.resolve(path);
+        return Files.exists(file) ? Files.readString(file) : null;
     }
 
     /**
