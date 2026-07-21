@@ -19,8 +19,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -75,9 +75,7 @@ public final class ScriptEvalService {
             Map<String, byte[]> compiled = new HashMap<>();
             StandardJavaFileManager std = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8);
 
-            String[] cp = System.getProperty("java.class.path").split(File.pathSeparator);
-            std.setLocation(StandardLocation.CLASS_PATH,
-                    Arrays.stream(cp).map(File::new).filter(File::exists).toList());
+            std.setLocation(StandardLocation.CLASS_PATH, compilerClassPath());
 
             JavaFileManager fm = new ForwardingJavaFileManager<>(std) {
                 @Override
@@ -146,6 +144,48 @@ public final class ScriptEvalService {
             return new ScriptResult(false, null, "Execution timed out (>10s)");
         } catch (Exception e) {
             return new ScriptResult(false, null, "Error: " + e);
+        }
+    }
+    private static List<File> compilerClassPath() {
+        LinkedHashSet<File> entries = new LinkedHashSet<>();
+        addPlainClassPath(entries, System.getProperty("java.class.path"));
+        addModFolders(entries, System.getProperty("fml.modFolders"));
+        addModFolders(entries, System.getenv("MOD_CLASSES"));
+        return List.copyOf(entries);
+    }
+
+    private static void addPlainClassPath(LinkedHashSet<File> entries, String classPath) {
+        if (classPath == null || classPath.isBlank()) {
+            return;
+        }
+        for (String raw : classPath.split(File.pathSeparator)) {
+            addExisting(entries, raw);
+        }
+    }
+
+    private static void addModFolders(LinkedHashSet<File> entries, String modFolders) {
+        if (modFolders == null || modFolders.isBlank()) {
+            return;
+        }
+        for (String entry : modFolders.split(File.pathSeparator)) {
+            int pathStart = entry.indexOf("%%");
+            if (pathStart >= 0) {
+                while (pathStart < entry.length() && entry.charAt(pathStart) == '%') {
+                    pathStart++;
+                }
+            } else {
+                pathStart = 0;
+            }
+            addExisting(entries, entry.substring(pathStart));
+        }
+    }
+
+    private static void addExisting(LinkedHashSet<File> entries, String raw) {
+        if (!raw.isBlank()) {
+            File entry = new File(raw);
+            if (entry.exists()) {
+                entries.add(entry);
+            }
         }
     }
 }
