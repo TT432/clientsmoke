@@ -106,16 +106,14 @@ public final class ScriptEvalService {
                 return new ScriptResult(false, null, "Compile error:\n" + errors);
             }
 
-            byte[] bytecode = compiled.get("_EyelibScript");
-            if (bytecode == null) {
-                return new ScriptResult(false, null, "Internal error: no bytecode generated");
-            }
-
+            // 同一轮编译可能产出嵌套类（局部类 / 匿名类 / 内部类，如 _EyelibScript$1Capture），
+            // 必须在同一 ClassLoader 中按需全部定义，否则实例化时报 NoClassDefFoundError。
             Class<?> clazz = new ClassLoader(ScriptEvalService.class.getClassLoader()) {
                 @Override
                 protected Class<?> findClass(String name) throws ClassNotFoundException {
-                    if ("_EyelibScript".equals(name)) {
-                        return defineClass(name, bytecode, 0, bytecode.length);
+                    byte[] bytes = compiled.get(name);
+                    if (bytes != null) {
+                        return defineClass(name, bytes, 0, bytes.length);
                     }
                     return super.findClass(name);
                 }
