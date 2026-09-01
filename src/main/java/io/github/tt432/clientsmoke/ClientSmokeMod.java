@@ -57,6 +57,16 @@ public class ClientSmokeMod {
         container.registerConfig(ModConfig.Type.COMMON, ClientSmokeConfig.SPEC);
         NeoForge.EVENT_BUS.register(new MinimizeOnTitleScreen());
     //?}
+        // dedicated server 兜底：mods.toml clientSideOnly 的跳过是 Forge 47.3.25+ 才有的行为，
+        // 旧版 loader（如 dev 环境 47.1.3）仍会构造本 mod，此处直接早退，避免加载 client-only 类。
+        //? if legacy {
+        if (!net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
+        //?} else {
+        if (!net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+        //?}
+            LOGGER.info("[ClientSmoke] dedicated server detected — client-only init skipped");
+            return;
+        }
 
         // AI 调试 HTTP 服务器：仅在配置 ai_debug_port（系统属性/环境变量）时开启
         AIDebugServer.startIfConfigured();

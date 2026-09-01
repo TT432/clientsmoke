@@ -1,6 +1,8 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
+# 纯客户端 smoke 测试框架：dedicated server 上跳过加载（同 mods.toml 的 clientSideOnly）。
+clientSideOnly=true
 
 [[mods]]
 modId="${mod_id}"

@@ -1,6 +1,9 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
+# 纯客户端 smoke 测试框架：dedicated server 上 FML 直接跳过本 mod 的加载与构造，
+# 避免 AIDebugServer 等 client-only 类触发 RuntimeDistCleaner。
+clientSideOnly=true
 
 [[mods]]
 modId="${mod_id}"
