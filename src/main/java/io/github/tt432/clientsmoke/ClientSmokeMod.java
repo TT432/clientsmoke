@@ -61,8 +61,11 @@ public class ClientSmokeMod {
         // 旧版 loader（如 dev 环境 47.1.3）仍会构造本 mod，此处直接早退，避免加载 client-only 类。
         //? if legacy {
         if (!net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
-        //?} else {
+        //?} elif !modern {
         if (!net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+        //?} else {
+        // 26.1 起 FML 移除静态 dist 字段，改为实例方法 getDist()
+        if (!net.neoforged.fml.loading.FMLEnvironment.getDist().isClient()) {
         //?}
             LOGGER.info("[ClientSmoke] dedicated server detected — client-only init skipped");
             return;
